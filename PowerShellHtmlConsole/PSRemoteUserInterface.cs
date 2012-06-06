@@ -19,12 +19,15 @@ using System.Management.Automation.Host;
 using System.Security;
 using System.Text;
 using System.Threading;
+using log4net;
 using Size = System.Management.Automation.Host.Size;
 
 namespace PowerShellHtmlConsole
 {
-    internal class PSRemoteUserInterface : PSHostUserInterface
+    public class PSRemoteUserInterface : PSHostUserInterface
     {
+        private static readonly ILog Log = LogManager.GetLogger(typeof(PSWrapper));
+
         private static readonly Dictionary<ConsoleColor, Color> _colorMap
             = new Dictionary<ConsoleColor, Color>()
                   {
@@ -132,57 +135,34 @@ namespace PowerShellHtmlConsole
                                             Collection<ChoiceDescription> choices,
                                             int defaultChoice)
         {
-            // Write the caption and message strings in Blue.
-            this.WriteLine(
-                           ConsoleColor.Blue,
-                           ConsoleColor.Black,
-                           caption + "\n" + message + "\n");
+            WriteLine(caption + "\n" + message);
 
-            // Convert the choice collection into something that's a
-            // little easier to work with
-            // See the BuildHotkeysAndPlainLabels method for details.
-            string[,] promptData = BuildHotkeysAndPlainLabels(choices);
+            var hotKeysAndOptions = BuildHotkeysAndPlainLabels(choices).ToList();
 
-            // Format the overall choice prompt string to display...
-            StringBuilder sb = new StringBuilder();
-            for (int element = 0; element < choices.Count; element++)
-            {
-                sb.Append(String.Format(
-                                        CultureInfo.CurrentCulture,
-                                        "|{0}> {1} ",
-                                        promptData[0, element],
-                                        promptData[1, element]));
-            }
+            var optionsText = string.Join("   ",
+                                          hotKeysAndOptions.Select(
+                                              (x, i) => FormatWithColor(String.Format("<{0}> {1}   ", x.Item1, x.Item2),
+                                                                        i == defaultChoice ? Color.Yellow : Color.White,
+                                                                        null)));
 
-            sb.Append(String.Format(
-                                    CultureInfo.CurrentCulture,
-                                    "[Default is ({0}]",
-                                    promptData[0, defaultChoice]));
+            var defaultOptionHint = " (default is \"" + hotKeysAndOptions[defaultChoice].Item1 + "\")";
 
-            // loop reading prompts until a match is made, the default is
-            // chosen or the loop is interrupted with ctrl-C.
             while (true)
             {
-                this.WriteLine(ConsoleColor.Cyan, ConsoleColor.Black, sb.ToString());
-                string data = Console.ReadLine().Trim().ToUpper(CultureInfo.CurrentCulture);
+                _buffers.QueueOutCommand(OutCommand.CreatePrint(optionsText + defaultOptionHint));
+                _buffers.QueueOutCommand(OutCommand.CreateReadLine(false));
 
-                // if the choice string was empty, use the default selection
+                var data = ReadLineInternal(false).ToUpper();
                 if (data.Length == 0)
                 {
                     return defaultChoice;
                 }
-
-                // see if the selection matched and return the
-                // corresponding index if it did...
-                for (int i = 0; i < choices.Count; i++)
+                var optionIndex = hotKeysAndOptions.FindIndex(x => x.Item1 == data);
+                if (optionIndex >= 0)
                 {
-                    if (promptData[0, i] == data)
-                    {
-                        return i;
-                    }
+                    return optionIndex;
                 }
-
-                this.WriteErrorLine("Invalid choice: " + data);
+                WriteErrorLine("Invalid choice: " + data);
             }
         }
 
@@ -227,6 +207,7 @@ namespace PowerShellHtmlConsole
                                PSCredentialTypes allowedCredentialTypes,
                                PSCredentialUIOptions options)
         {
+            Log.DebugFormat("Prompting for credentials for {0} at {1}", userName, targetName);
             _buffers.QueueOutCommand(OutCommand.CreatePrint(string.Format("Enter password for user {0} at {1}", userName, targetName)));
             var password = ReadLineAsSecureString();
             return new PSCredential(userName, password);
@@ -239,6 +220,7 @@ namespace PowerShellHtmlConsole
         /// <returns>The characters entered by the user.</returns>
         public override string ReadLine()
         {
+            Log.DebugFormat("Waiting for user input");
             return ReadLineInternal(false);
         }
 
@@ -264,6 +246,7 @@ namespace PowerShellHtmlConsole
         /// <returns>A secure string of the characters entered by the user.</returns>
         public override SecureString ReadLineAsSecureString()
         {
+            Log.DebugFormat("Waiting for user input (password)");
             var unsecure = ReadLineInternal(true);
             var result = new SecureString();
             foreach (char c in unsecure)
@@ -280,6 +263,11 @@ namespace PowerShellHtmlConsole
         /// <param name="value">The characters to be written.</param>
         public override void Write(string value)
         {
+            if (string.IsNullOrEmpty(value))
+            {
+                return;
+            }
+            Log.DebugFormat("Echo: {0}",value);
             _buffers.QueueOutCommand(OutCommand.CreatePrint(value));
         }
 
@@ -299,19 +287,28 @@ namespace PowerShellHtmlConsole
             {
                 return;
             }
+            Log.DebugFormat("Echo: {0}", value);
             var foregroundColorValue = MapColor(foregroundColor);
             var backgroundColorValue = MapColor(backgroundColor);
 
-            var formattedValue = string.Format("[[;#{0:x2}{1:x2}{2:x2};#{3:x2}{4:x2}{5:x2}]{6}]",
-                                               foregroundColorValue.R,
-                                               foregroundColorValue.G,
-                                               foregroundColorValue.B,
-                                               backgroundColorValue.R,
-                                               backgroundColorValue.G,
-                                               backgroundColorValue.B,
-                                               value);
+            string formattedValue = FormatWithColor(value, foregroundColorValue, backgroundColorValue);
 
             _buffers.QueueOutCommand(OutCommand.CreatePrint(formattedValue));
+        }
+
+        private static string FormatWithColor(string value, Color? foregroundColorValue, Color? backgroundColorValue)
+        {
+            return string.Format("[[;{0};{1}]{2}]",
+                                 FormatColor(foregroundColorValue),
+                                 FormatColor(backgroundColorValue),
+                                 value);
+        }
+
+        private static string FormatColor(Color? color)
+        {
+            return color.HasValue
+                       ? string.Format("#{0:x2}{1:x2}{2:x2}", color.Value.R, color.Value.G, color.Value.B)
+                       : "";
         }
 
         private static Color MapColor(ConsoleColor consoleColor)
@@ -371,7 +368,7 @@ namespace PowerShellHtmlConsole
         /// <param name="value">The line to be written.</param>
         public override void WriteLine(string value)
         {
-            Console.WriteLine(value);
+            Log.DebugFormat("Echo: {0}",value);
             _buffers.QueueOutCommand(OutCommand.CreatePrint(value+"\n"));
         }
 
@@ -423,26 +420,16 @@ namespace PowerShellHtmlConsole
         /// <returns>
         /// A two dimensional array containing the parsed components.
         /// </returns>
-        private static string[] GetHotkeyAndLabel(string input)
+        private static Tuple<string, string> GetHotkeyAndLabel(string input)
         {
-            string[] result = new string[] { String.Empty, String.Empty };
-            string[] fragments = input.Split('&');
-            if (fragments.Length == 2)
+            int indexOfAmpersand = input.IndexOf("&");
+            if (indexOfAmpersand >= 0 && indexOfAmpersand < input.Length - 1)
             {
-                if (fragments[1].Length > 0)
-                {
-                    result[0] = fragments[1][0].ToString().
-                    ToUpper(CultureInfo.CurrentCulture);
-                }
-
-                result[1] = (fragments[0] + fragments[1]).Trim();
+                var hotKey = input[indexOfAmpersand+1].ToString().ToUpper();
+                var label = input.Replace("&", "");
+                return new Tuple<string, string>(hotKey, label);
             }
-            else
-            {
-                result[1] = input;
-            }
-
-            return result;
+            return new Tuple<string, string>("", input);
         }
 
         /// <summary>
@@ -456,20 +443,9 @@ namespace PowerShellHtmlConsole
         /// <returns>
         /// A two dimensional array containing the accelerator characters
         /// and the cleaned-up labels</returns>
-        private static string[,] BuildHotkeysAndPlainLabels(
-            Collection<ChoiceDescription> choices)
+        private static IEnumerable<Tuple<string, string>> BuildHotkeysAndPlainLabels(IEnumerable<ChoiceDescription> choices)
         {
-            // we will allocate the result array
-            string[,] hotkeysAndPlainLabels = new string[2, choices.Count];
-
-            for (int i = 0; i < choices.Count; ++i)
-            {
-                string[] hotkeyAndLabel = GetHotkeyAndLabel(choices[i].Label);
-                hotkeysAndPlainLabels[0, i] = hotkeyAndLabel[0];
-                hotkeysAndPlainLabels[1, i] = hotkeyAndLabel[1];
-            }
-
-            return hotkeysAndPlainLabels;
+            return choices.Select(x => GetHotkeyAndLabel(x.Label));
         }
     }
 }

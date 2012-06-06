@@ -1,11 +1,14 @@
 using System;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
+using log4net;
 
 namespace PowerShellHtmlConsole
 {
     public class PSWrapper : IPSRemoteHostCallback, IDisposable
     {
+        private static readonly ILog Log = LogManager.GetLogger(typeof(PSWrapper));
+
         private readonly InputOutputBuffers _buffers;
         private readonly Action _exitCallback;
         private readonly PSRemoteHost _psRemoteHost;
@@ -37,6 +40,7 @@ namespace PowerShellHtmlConsole
             {
                 return;
             }
+            Log.InfoFormat("Executing command: {0}", cmd);
             using (var powerShell = PowerShell.Create())
             {
                 powerShell.Runspace = _runspace;
@@ -114,6 +118,7 @@ namespace PowerShellHtmlConsole
 
         public void Exit(int code)
         {
+            Log.Info("Exiting");
             _exitCallback();
         }
 

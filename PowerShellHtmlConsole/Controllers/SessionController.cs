@@ -13,16 +13,8 @@ namespace PowerShellHtmlConsole.Controllers
         }
 
         public OutCommand Get()
-        {            
-            var result = _buffers.WaitForOutCommand();
-            if (result != null)
-            {
-                if (result.Print != null)
-                {
-                    Console.WriteLine("Echo: {0}", result.Print.Text);
-                }
-            }
-            return result;
+        {
+            return _buffers.WaitForOutCommand();
         }
 
         public void Post(InCommand command)
