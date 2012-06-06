@@ -1,0 +1,67 @@
+﻿
+<!DOCTYPE HTML>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="utf-8" />
+    <title>PowerShell HTML console</title>
+    <script src="jquery-1.7.1.min.js"></script>
+    <script src="jquery.terminal-min.js"></script>
+    <link href="jquery.terminal.css" rel="stylesheet"/>
+    <script>
+        function getSessionState() {
+            $.ajax({
+                url: "session",
+                type: "GET",
+                dataType: "json",
+                success: function (data, textStatus, jqXHR) {
+                    if (data != null) {
+                        if (data.Print != null) {
+                            terminal.echo(data.Print.Text);
+                        }
+                        if (data.ReadLine != null) {
+                            terminal.resume();
+                            terminal.set_mask(data.ReadLine.Secure);
+                        }
+                        if (data.Clear != null) {
+                            terminal.clear();
+                        }
+                    }
+                    getSessionState();
+                },
+                error: function (jqXHR, textStatus, errorThrown) {
+                    getSessionState();
+                }
+            });
+        }
+
+        jQuery(document).ready(function ($) {
+            terminal = $('body').terminal(function (command, term) {
+                term.resume();
+                term.resize();
+                $.ajax({
+                    url: "session",
+                    type: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({ "TextLine": command, "Columns": term.cols() }),
+                    dataType: "json",
+                    success: function (data, textStatus, jqXHR) {
+                    },
+                    error: function (jqXHR, textStatus, errorThrown) {
+                        term.error(textStatus);
+                    }
+                });
+                term.pause();
+            }, { greetings: 'PowerShell',
+                name: 'powershell',
+                exit: false,
+                height: 200,
+                prompt: 'PS>'
+            });
+            terminal.pause();
+            getSessionState();
+        });
+    </script>
+  </head>
+<body>
+</body>
+</html>
