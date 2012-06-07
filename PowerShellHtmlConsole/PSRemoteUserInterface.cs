@@ -28,7 +28,7 @@ namespace PowerShellHtmlConsole
     {
         private static readonly ILog Log = LogManager.GetLogger(typeof(PSWrapper));
 
-        private static readonly Dictionary<ConsoleColor, Color> _colorMap
+        private static readonly Dictionary<ConsoleColor, Color> ColorMap
             = new Dictionary<ConsoleColor, Color>()
                   {
                       {ConsoleColor.Black, Color.Black},
@@ -313,7 +313,7 @@ namespace PowerShellHtmlConsole
 
         private static Color MapColor(ConsoleColor consoleColor)
         {
-            return _colorMap[consoleColor];
+            return ColorMap[consoleColor];
         }
 
         /// <summary>
