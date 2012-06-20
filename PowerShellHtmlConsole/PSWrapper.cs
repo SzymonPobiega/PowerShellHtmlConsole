@@ -1,6 +1,7 @@
 using System;
 using System.Management.Automation;
 using System.Management.Automation.Runspaces;
+using System.Threading;
 using log4net;
 
 namespace PowerShellHtmlConsole
@@ -13,6 +14,7 @@ namespace PowerShellHtmlConsole
         private readonly Action _exitCallback;
         private readonly PSRemoteHost _psRemoteHost;
         private Runspace _runspace;
+        private Timer _timer;        
 
         public PSWrapper(InputOutputBuffers buffers, Action exitCallback)
         {
@@ -56,6 +58,11 @@ namespace PowerShellHtmlConsole
                 powerShell.Commands.Commands[0].MergeMyResults(PipelineResultTypes.Error, PipelineResultTypes.Output);
                 powerShell.Invoke();
             }
+            if (_timer != null)
+            {
+                _timer.Dispose();
+            }
+            _timer = new Timer(x => _exitCallback(), null, TimeSpan.FromMinutes(5), TimeSpan.FromMilliseconds(-1));
         }
 
         /// <summary>
@@ -112,7 +119,7 @@ namespace PowerShellHtmlConsole
             }
             finally
             {
-                _buffers.QueueOutCommand(OutCommand.CreateReadLine(false));
+                _buffers.QueueOutCommand(OutCommand.CreateReadLine(false, null));
             }
         }
 
@@ -130,6 +137,10 @@ namespace PowerShellHtmlConsole
 
         public void Dispose()
         {
+            if (_timer != null)
+            {
+                _timer.Dispose();
+            }
             _runspace.Close();
             _runspace.Dispose();
         }

@@ -21,6 +21,7 @@
                         if (data.ReadLine != null) {
                             terminal.resume();
                             terminal.set_mask(data.ReadLine.Secure);
+                            terminal.set_prompt(data.ReadLine.OverridePrompt != null ? data.ReadLine.OverridePrompt : "PS>");
                         }
                         if (data.Clear != null) {
                             terminal.clear();

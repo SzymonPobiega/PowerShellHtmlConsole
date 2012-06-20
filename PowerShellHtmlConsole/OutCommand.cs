@@ -51,13 +51,14 @@ namespace PowerShellHtmlConsole
                        };
         }
 
-        public static OutCommand CreateReadLine(bool secure)
+        public static OutCommand CreateReadLine(bool secure, string overrideProppt)
         {
             return new OutCommand()
                        {
                            ReadLine = new ReadLineOutCommand()
                                           {
-                                              Secure = secure
+                                              Secure = secure,
+                                              OverridePrompt = overrideProppt
                                           }
                        };
         }
@@ -95,6 +96,7 @@ namespace PowerShellHtmlConsole
     public class ReadLineOutCommand
     {
         public bool Secure { get; set; }
+        public string OverridePrompt { get; set; }
     }
 
     public class PromptOutCommand

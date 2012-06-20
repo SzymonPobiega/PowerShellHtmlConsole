@@ -83,37 +83,19 @@ namespace PowerShellHtmlConsole
                        string message,
                        Collection<FieldDescription> descriptions)
         {
-            //Dictionary<string, PSObject> result;
-            //var waitEvent = new ManualResetEventSlim();
-            //_buffers.RegisterForInCommand(x => true, (cmd, scope) => ProcessPromptResult(cmd, scope, waitEvent, out result));
-            //_buffers.QueueOutCommand(OutCommand.CreatePrompt(caption, message,
-            //    descriptions.Select(x => new PromptField {Label = x.Label, Name = x.Name}).ToList()));
-
-            //waitEvent.Wait();
-
-            //var results = new Dictionary<string, PSObject>();
-            //foreach (var fd in descriptions)
-            //{
-            //    string[] label = GetHotkeyAndLabel(fd.Label);
-            //    this.WriteLine(label[1]);
-            //    string userData = Console.ReadLine();
-            //    if (userData == null)
-            //    {
-            //        return null;
-            //    }
-
-            //    results[fd.Name] = PSObject.AsPSObject(userData);
-            //}
-
-            //return results;
-            throw new NotSupportedException();
+            if (!string.IsNullOrEmpty(message))
+            {
+                WriteLine(message);
+            }
+            var results = new Dictionary<string, PSObject>();
+            foreach (var fd in descriptions)
+            {
+                var label = GetHotkeyAndLabel(string.IsNullOrEmpty(fd.Label) ? fd.Name : fd.Label);
+                var userData = ReadLineInternal(false, label.Item2 + ": ");
+                results[fd.Name] = PSObject.AsPSObject(userData);
+            }
+            return results;
         }
-
-        //private void ProcessPromptResult(InCommand cmd, IDisposable scope, ManualResetEvent waitEvent, out Dictionary<string, PSObject> result)
-        //{
-        //    scope.Dispose();
-        //    result = null;
-        //}
 
         /// <summary>
         /// Provides a set of choices that enable the user to choose a single option 
@@ -135,7 +117,10 @@ namespace PowerShellHtmlConsole
                                             Collection<ChoiceDescription> choices,
                                             int defaultChoice)
         {
-            WriteLine(caption + "\n" + message);
+            if (!string.IsNullOrEmpty(message))
+            {
+                WriteLine(message);
+            }
 
             var hotKeysAndOptions = BuildHotkeysAndPlainLabels(choices).ToList();
 
@@ -145,12 +130,16 @@ namespace PowerShellHtmlConsole
                                                                         i == defaultChoice ? Color.Yellow : Color.White,
                                                                         null)));
 
-            var defaultOptionHint = " (default is \"" + hotKeysAndOptions[defaultChoice].Item1 + "\")";
-
+            var defaultOptionHint = "";
+            if (defaultChoice >= 0 && defaultChoice < choices.Count)
+            {
+                defaultOptionHint = " (default is \"" + hotKeysAndOptions[defaultChoice].Item1 + "\")";
+            }
+            
             while (true)
             {
                 _buffers.QueueOutCommand(OutCommand.CreatePrint(optionsText + defaultOptionHint));
-                _buffers.QueueOutCommand(OutCommand.CreateReadLine(false));
+                _buffers.QueueOutCommand(OutCommand.CreateReadLine(false, null));
 
                 var data = ReadLineInternal(false).ToUpper();
                 if (data.Length == 0)
@@ -158,6 +147,11 @@ namespace PowerShellHtmlConsole
                     return defaultChoice;
                 }
                 var optionIndex = hotKeysAndOptions.FindIndex(x => x.Item1 == data);
+                if (optionIndex >= 0)
+                {
+                    return optionIndex;
+                }
+                optionIndex = hotKeysAndOptions.FindIndex(x => x.Item2 == data);
                 if (optionIndex >= 0)
                 {
                     return optionIndex;
@@ -221,10 +215,10 @@ namespace PowerShellHtmlConsole
         public override string ReadLine()
         {
             Log.DebugFormat("Waiting for user input");
-            return ReadLineInternal(false);
+            return ReadLineInternal(false, "");
         }
 
-        private string ReadLineInternal(bool secure)
+        private string ReadLineInternal(bool secure, string overrideProppt = null)
         {
             var waitEvent = new ManualResetEventSlim();
             string result = "";
@@ -234,7 +228,7 @@ namespace PowerShellHtmlConsole
                                                              waitEvent.Set();
                                                              result = cmd.TextLine;
                                                          });
-            _buffers.QueueOutCommand(OutCommand.CreateReadLine(secure));
+            _buffers.QueueOutCommand(OutCommand.CreateReadLine(secure, overrideProppt));
             waitEvent.Wait();
             return result;
         }
@@ -301,7 +295,7 @@ namespace PowerShellHtmlConsole
             return string.Format("[[;{0};{1}]{2}]",
                                  FormatColor(foregroundColorValue),
                                  FormatColor(backgroundColorValue),
-                                 value);
+                                 value.Replace("[", "&#91;").Replace("]", "&#93;"));
         }
 
         private static string FormatColor(Color? color)

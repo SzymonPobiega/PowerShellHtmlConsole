@@ -74,7 +74,7 @@ namespace PowerShellHtmlConsole
         private static void StartInteractivePrompt(InputOutputBuffers buffers)
         {
             Log.Info("Staring interactive prompt");
-            buffers.QueueOutCommand(OutCommand.CreateReadLine(false));
+            buffers.QueueOutCommand(OutCommand.CreateReadLine(false, null));
         }
 
         private static void RunScript(string script, PSWrapper powerShell)
