@@ -52,6 +52,8 @@ namespace PowerShellHtmlConsole
         private readonly InputOutputBuffers _buffers;
         private readonly PSRemoteRawUserInterface _rawUI = new PSRemoteRawUserInterface();
 
+        private StringBuilder _outputBuffer =new StringBuilder();
+
         public PSRemoteUserInterface(InputOutputBuffers buffers)
         {
             _buffers = buffers;
@@ -201,8 +203,20 @@ namespace PowerShellHtmlConsole
                                PSCredentialTypes allowedCredentialTypes,
                                PSCredentialUIOptions options)
         {
-            Log.DebugFormat("Prompting for credentials for {0} at {1}", userName, targetName);
-            _buffers.QueueOutCommand(OutCommand.CreatePrint(string.Format("Enter password for user {0} at {1}", userName, targetName)));
+            if (string.IsNullOrEmpty(userName))
+            {
+                Log.DebugFormat("Prompting for username");
+                var userPrompt = !string.IsNullOrEmpty(targetName)
+                                  ? string.Format("Enter username to use to log to {0}", targetName)
+                                  : "Enter username";
+                _buffers.QueueOutCommand(OutCommand.CreatePrint(userPrompt));
+                userName = ReadLine();
+            }
+            Log.DebugFormat("Prompting for password for {0} at {1}", userName, targetName);
+            var passwordPrompt = !string.IsNullOrEmpty(targetName)
+                                     ? string.Format("Enter password for user {0} at {1}", userName, targetName)
+                                     : string.Format("Enter password for user {0}", userName);
+            _buffers.QueueOutCommand(OutCommand.CreatePrint(passwordPrompt));
             var password = ReadLineAsSecureString();
             return new PSCredential(userName, password);
         }
@@ -241,7 +255,7 @@ namespace PowerShellHtmlConsole
         public override SecureString ReadLineAsSecureString()
         {
             Log.DebugFormat("Waiting for user input (password)");
-            var unsecure = ReadLineInternal(true);
+            var unsecure = ReadLineInternal(true, "");
             var result = new SecureString();
             foreach (char c in unsecure)
             {
@@ -261,8 +275,8 @@ namespace PowerShellHtmlConsole
             {
                 return;
             }
-            Log.DebugFormat("Echo: {0}",value);
-            _buffers.QueueOutCommand(OutCommand.CreatePrint(value));
+            Log.DebugFormat("Echo: {0}", value);
+            _outputBuffer.Append(value);
         }
 
         /// <summary>
@@ -284,10 +298,8 @@ namespace PowerShellHtmlConsole
             Log.DebugFormat("Echo: {0}", value);
             var foregroundColorValue = MapColor(foregroundColor);
             var backgroundColorValue = MapColor(backgroundColor);
-
             string formattedValue = FormatWithColor(value, foregroundColorValue, backgroundColorValue);
-
-            _buffers.QueueOutCommand(OutCommand.CreatePrint(formattedValue));
+            _outputBuffer.Append(formattedValue);
         }
 
         private static string FormatWithColor(string value, Color? foregroundColorValue, Color? backgroundColorValue)
@@ -322,7 +334,19 @@ namespace PowerShellHtmlConsole
                                        ConsoleColor backgroundColor,
                                        string value)
         {
-            this.Write(foregroundColor, backgroundColor, value);
+            if (string.IsNullOrEmpty(value) && _outputBuffer.Length == 0)
+            {
+                return;
+            }
+            var pending = _outputBuffer.ToString();
+            _outputBuffer.Clear();
+            Log.DebugFormat("Echo: {0}", value);
+            var foregroundColorValue = MapColor(foregroundColor);
+            var backgroundColorValue = MapColor(backgroundColor);
+
+            string formattedValue = FormatWithColor(value, foregroundColorValue, backgroundColorValue);
+
+            _buffers.QueueOutCommand(OutCommand.CreatePrint(pending+formattedValue));
         }
 
         /// <summary>
@@ -352,6 +376,10 @@ namespace PowerShellHtmlConsole
         /// </summary>
         public override void WriteLine()
         {
+            if (_outputBuffer.Length > 0)
+            {
+                WriteLine("");
+            }
             //_buffers.QueueOutCommand(OutCommand.CreatePrint(""));
         }
 
@@ -362,8 +390,10 @@ namespace PowerShellHtmlConsole
         /// <param name="value">The line to be written.</param>
         public override void WriteLine(string value)
         {
-            Log.DebugFormat("Echo: {0}",value);
-            _buffers.QueueOutCommand(OutCommand.CreatePrint(value+"\n"));
+            var pending = _outputBuffer.ToString();
+            _outputBuffer.Clear();
+            Log.DebugFormat("Echo: {0}", value);
+            _buffers.QueueOutCommand(OutCommand.CreatePrint(pending+value + "\n"));
         }
 
         /// <summary>
